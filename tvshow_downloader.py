@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 #
-#    movie_rss.py - movie_rss Get your favorites TV Show automaticaly
+#    tvshow_downloader.py - A python script to manage the download of your favorites TV Shows
 #    Copyright (C) 2012 Axel "0vercl0k" Souchet - http://www.twitter.com/0vercl0k
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -28,15 +28,6 @@ import time
 import datetime
 import re
 import os
-
-class FileDownloader:
-	@staticmethod
-	def download(link, where):
-		name = link[link.rfind('/')+1:]
-		u = urllib2.urlopen(link)
-		f = open(os.path.sep.join([where, name]), 'wb')
-		f.write(u.read())
-		f.close()
 
 class Episode:
 	"""class describing an episode"""
@@ -94,12 +85,12 @@ class DownloadHistory:
 
 class TVShows_Manager:
 	"""This class manages your favorite TV Shows download"""
-	def __init__(self, favorite_tv_show, dir_down = '/tmp', log_file = '/home/overclok/.logz_dl'):
+	def __init__(self, favorite_tv_show, magnets_file = '/tmp/magnetz', log_file = '~/.logz_dl'):
 		self.fav = favorite_tv_show
 		self.co = sqlite3.connect('./tvshows.db')
 		self.c = self.co.cursor()
 		self.logger = DownloadHistory(log_file)
-		self.dir_down = dir_down
+		self.magnets_file = magnets_file
 
 		# initialize the tables
 		for show in self.fav:
@@ -146,6 +137,8 @@ class TVShows_Manager:
 			print 'An error occured buddy: ' + str(e)
 
 	def checkout(self):
+		file_magnets = open(self.magnets_file, 'w')
+
 		nb_files_down = 0
 		for show in self.fav:
 			# trying to retrieve the last episode
@@ -158,31 +151,22 @@ class TVShows_Manager:
 				if show['hd'] != episode.is_an_hd_episode():
 					continue
 
-				print 'It seems you haven\'t downloaded that one : ' + last_ep.links[0].href
-				print '-> Downloading in %s..' % self.dir_down,
-				
-				is_download_ok = True
-				try:
-					FileDownloader.download(last_ep.links[0].href, self.dir_down)
-				except Exception, e:
-					print ' FAIL, exception : %s\n' % str(e)
-					is_download_ok = False
-				
-				if is_download_ok == True:
-					print 'OK\n'
-					self.logger.add_an_entry(episode.get_name())
+				print 'It seems you haven\'t downloaded that one : ' + last_ep.magneturi
+				self.logger.add_an_entry(episode.get_name())
+				file_magnets.write(last_ep.magneturi + '\n')
 
-					attrs = (
-						episode.get_name(),
-						episode.get_season(),
-						episode.get_episode_number(),
-						episode.is_an_hd_episode(),
-						time.time()
-					)
-					self.c.execute('INSERT INTO "%s" VALUES(NULL, ?, ?, ?, ?, ?)' % show['name'], attrs)
-					self.co.commit()
-					nb_files_down += 1
+				attrs = (
+					episode.get_name(),
+					episode.get_season(),
+					episode.get_episode_number(),
+					episode.is_an_hd_episode(),
+					time.time()
+				)
 
+				self.c.execute('INSERT INTO "%s" VALUES(NULL, ?, ?, ?, ?, ?)' % show['name'], attrs)
+				self.co.commit()
+				nb_files_down += 1
+		file_magnets.close()
 		return nb_files_down
 
 	def __del__(self):
@@ -190,25 +174,17 @@ class TVShows_Manager:
 
 def main(argc, argv):
 	# I RECOMMEND YOU:
-	# 1] create a little bash script to start this script
-
-	#!/bin/bash
-	#WATCH_DIR=/downloads_stuff/watch-dir
-	#python movie_rss.py
-	#for i in $(ls $WATCH_DIR); do
-	#        transmission-remote --auth overclok:pwd -a $WATCH_DIR/$i
-	#        rm $WATCH_DIR/$i
-	#done;
+	# 1] create a little bash script to start this script -- see run_tvshow_downloader.sh
 
 	# 2] add a crontab to launch the whole process as you want
 	# crontab -e
-	# 0 * * * * ~/utils/run_movie_rss.sh
+	# 0 * * * * run_tvshow_downloader.sh
 
 	# 3] add to your ~/.bashrc something like:
 	# echo "HERE ARE THE LAST DOWNLOADS:"
 	# tail -20 ~/.logz_dl
 
-	# I assume your serie exist there : http://www.ezrss.it/shows/ (and verify eztv team releases 720p files for your serie)
+	# I assume your serie exists there : http://www.ezrss.it/shows/ (and verify eztv team releases 720p files for your serie)
 	fav_tv_show = [
 		{'name' : 'The Walking Dead', 'hd' : True },
 		{'name' : 'Game Of Thrones', 'hd' : True },
@@ -217,7 +193,7 @@ def main(argc, argv):
 		{'name' : 'True Blood', 'hd' : True}
 	]
 
-	shows_manager = TVShows_Manager(fav_tv_show, '/downloads_stuff/watch-dir')
+	shows_manager = TVShows_Manager(fav_tv_show)
 	print '%d files downloaded.' % shows_manager.checkout()
 	return 1
 

@@ -1,16 +1,16 @@
 #!/bin/bash
 
-WATCH_DIR=/downloads_stuff/watch-dir
-DIR=$(pwd)
+MAGNETZ_FILE=/tmp/magnetz
 
-cd ~/utils
 # Let the script do its job
-python movie_rss.py
+python tvshow_downloader.py
 
-# Adding manually the different torrent (yeah the watch-dir doesn't seem to work correctly)
-for i in $(ls $WATCH_DIR); do
-	transmission-remote --auth user:pwd -a $WATCH_DIR/$i
-	rm $WATCH_DIR/$i
-done;
+if [ -f $MAGNETZ_FILE ]; then
 
-cd $DIR
+	# Adding the different magnet torrent
+	for magnet in $(cat $MAGNETZ_FILE); do
+		transmission-remote --auth user:pwd -a "$magnet"
+	done;
+
+	rm $MAGNETZ_FILE
+fi
