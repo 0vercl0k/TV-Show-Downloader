@@ -28,6 +28,47 @@ import time
 import datetime
 import re
 import os
+import ConfigParser
+
+class TVShowConfigurationParser:
+	def __init__(self, conf_file = './tvshow_downloader.cfg'):
+		self.global_conf = {}
+		self.series = []
+
+		parser = ConfigParser.ConfigParser()
+		
+		if len(parser.read(conf_file)) == 0:
+			parser.add_section('global')
+			parser.set('global', 'magnet_file', '/tmp/magnetz')
+			parser.set('global', 'log_file', '~/.logz_dl')
+			parser.write(open('./tvshow_downloader.cfg', 'w'))
+
+		try:
+			# now we check the datas
+			self.global_conf['magnet_file'] = parser.get('global', 'magnet_file')
+			self.global_conf['log_file'] = parser.get('global', 'log_file')
+
+			if len(parser.sections()) == 1:
+				return
+
+			# now the series
+			for section in parser.sections():
+				if section != 'global':
+					self.series.append({
+						'name' : section,
+						'hd' : parser.getboolean(section, 'hd')
+					})
+		except:
+			raise Exception('Your configuration file sucks.')
+	
+	def get_log_file(self):
+		return self.global_conf['log_file']
+	
+	def get_magnet_file(self):
+		return self.global_conf['magnet_file']
+	
+	def get_series(self):
+		return self.series
 
 class Episode:
 	"""class describing an episode"""
@@ -85,9 +126,9 @@ class DownloadHistory:
 
 class TVShows_Manager:
 	"""This class manages your favorite TV Shows download"""
-	def __init__(self, favorite_tv_show, magnets_file = '/tmp/magnetz', log_file = '~/.logz_dl'):
+	def __init__(self, favorite_tv_show, log_file, magnets_file):
 		self.fav = favorite_tv_show
-		self.co = sqlite3.connect('./tvshows.db')
+		self.co = sqlite3.connect('./tvshow_downloader.db')
 		self.c = self.co.cursor()
 		self.logger = DownloadHistory(log_file)
 		self.magnets_file = magnets_file
@@ -138,8 +179,8 @@ class TVShows_Manager:
 
 	def checkout(self):
 		file_magnets = open(self.magnets_file, 'w')
-
 		nb_files_down = 0
+
 		for show in self.fav:
 			# trying to retrieve the last episode
 			last_ep = self.__get_last_episode(show['name'])
@@ -184,17 +225,21 @@ def main(argc, argv):
 	# echo "HERE ARE THE LAST DOWNLOADS:"
 	# tail -20 ~/.logz_dl
 
-	# I assume your serie exists there : http://www.ezrss.it/shows/ (and verify eztv team releases 720p files for your serie)
-	fav_tv_show = [
-		{'name' : 'The Walking Dead', 'hd' : True },
-		{'name' : 'Game Of Thrones', 'hd' : True },
-		{'name' : 'Californication', 'hd' : False},
-		{'name' : 'Spartacus', 'hd': True},
-		{'name' : 'True Blood', 'hd' : True}
-	]
+	# I assume all your series exist there:
+	#	http://www.ezrss.it/shows/ (and verify eztv team releases 720p files for your series)
+	try:
+		conf_manager = TVShowConfigurationParser()
+	except Exception, e:
+		print 'Your configuration file seems to sucks, here is the exception:'
+		print str(e)
 
-	shows_manager = TVShows_Manager(fav_tv_show)
-	print '%d files downloaded.' % shows_manager.checkout()
+	shows_manager = TVShows_Manager(
+		conf_manager.get_series(),
+		conf_manager.get_log_file(),
+		conf_manager.get_magnet_file()
+	)
+	
+	print '%d magnets added.' % shows_manager.checkout()
 	return 1
 
 if __name__ == '__main__':
