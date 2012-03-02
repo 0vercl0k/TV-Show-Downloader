@@ -9,8 +9,8 @@ to simplify my whole existence on this earth: I haven't to think about downloadi
 # How it works ?
 The idea behind this "project" is very, very, (really.) very simple:
     * The python script checks if a new episode is released by the eztv team (btw, thank you guys)
-        * -> if a new one is available, the script writes its magnet URI somewhere and add it to the database
-        * -> if the latest released is already in the TVShow Downloader, it does nothing
+        * if a new one is available, the script writes its magnet URI somewhere and add it to the database
+        * if the latest released is already in the TVShow Downloader, it does nothing
     
     * With a bash script you can add the magnets into your favorite torrent manager (I personaly use transmission, I've planned to fully integrate this one in my script... one day.)
 
