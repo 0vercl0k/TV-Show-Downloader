@@ -55,7 +55,7 @@ class TVShowConfigurationParser:
         if len(parser.read(conf_file)) == 0:
             parser.add_section('global')
             parser.set('global', 'magnet_file', '/tmp/magnetz')
-            parser.set('global', 'log_file', '/home/overclok/.logz_dl')
+            parser.set('global', 'log_file', './.logz_dl')
             parser.write(open('./tvshow_downloader.cfg', 'w'))
 
         try:
@@ -124,7 +124,7 @@ class Episode:
 
 class DownloadHistory:
     '''
-    A little class to keep a writing trace of the differents downloads,
+    A little class to keep a written trace of the differents downloads,
     it can be cool to see in your bash the latest downloaded files.
     '''
     def __init__(self, log_file):
@@ -186,6 +186,8 @@ class TVShows_Manager:
     def __parse_eztv(self, tv_show):
         '''
         Parse the eztv website, and raise an exception if something goes wrong
+        It returns two episodes for a simple reason:
+            for each episode (almost) you have two releases: the standart and the hd one
         '''
         params = urlencode({
             'show_name' : tv_show,
@@ -197,7 +199,7 @@ class TVShows_Manager:
             raise f.bozo_exception
 
         # we want only the latest entry -- because I assume you launch the script at least one time each day
-        return f.entries[0]
+        return [f.entries[0], f.entries[1]]
 
     def __is_episode_already_downloaded(self, tv_show, ep_name):
         '''
@@ -214,43 +216,68 @@ class TVShows_Manager:
         Retrives the latest un-downloaded episode of a specific tv show
         '''
         try:
-            last_ep = self.__parse_eztv(tv_show)
-            is_already_downloaded = self.__is_episode_already_downloaded(tv_show, last_ep.title)
-            if is_already_downloaded == True:
-                return None
-            return last_ep
+            last_eps = self.__parse_eztv(tv_show)
+            
+            # first, we test the older one
+            last_eps.reverse()
+
+            for episode in last_eps:
+                ep = Episode(episode.title)
+                
+                is_already_downloaded = self.__is_episode_already_downloaded(tv_show, episode.title)
+
+                if is_already_downloaded == False and ep.is_an_hd_episode() == hd:
+                    return {
+                        'feedparser' : episode ,
+                        'episode' : ep
+                    }
+
+            return None
         except Exception, e:
-            print 'An error occured buddy: ' + str(e)
+            print 'An error occured while I was querying eztv: ' + str(e)
+            raise e
 
     def checkout(self):
         '''
-        Find the latest episode for each your serie and write their magnet URI into a specific file
+        Find the latest episode for each of your serie and write their magnets URI into a specific file
         '''
         file_magnets = open(self.magnets_file, 'w')
         nb_files_down = 0
 
         for show in self.fav:
-            # trying to retrieve the latest episode
-            last_ep = self.__get_last_episode(show['name'])
+            # Yeah, I give  3 attempts to parse the eztv website
+            counter_exception, passed = 0, False
+
+            while counter_exception < 3 and passed == False:
+                # trying to retrieve the latest episode
+                last_ep = None
+                try:
+                    last_ep = self.__get_last_episode(show['name'], show['hd'])
+                    passed = True
+                except:
+                    print 'retrying in 5s..'
+                    # I'll try after a little sleep
+                    time.sleep(5)
+
+                    counter_exception += 1
+                    if counter_exception >= 2:
+                        raise Exception('The eztv website seems to be definitively down.')
+
             if last_ep != None:
+                magnet_uri = last_ep['feedparser'].magneturi
+                print 'It seems you haven\'t downloaded that one : ' + magnet_uri
 
-                episode = Episode(last_ep.title)
-
-                # if we want only an hd one or not
-                if show['hd'] != episode.is_an_hd_episode():
-                    continue
-
-                print 'It seems you haven\'t downloaded that one : ' + last_ep.magneturi
-                self.logger.add_an_entry(episode.get_name())
-                file_magnets.write(last_ep.magneturi + '\n')
+                self.logger.add_an_entry(last_ep['episode'].get_name())
+                file_magnets.write(magnet_uri + '\n')
 
                 attrs = (
-                    episode.get_name(),
-                    episode.get_season(),
-                    episode.get_episode_number(),
-                    episode.is_an_hd_episode(),
+                    last_ep['episode'].get_name(),
+                    last_ep['episode'].get_season(),
+                    last_ep['episode'].get_episode_number(),
+                    last_ep['episode'].is_an_hd_episode(),
                     time.time()
                 )
+
                 # OK, now I assume you'll start the torrent soon ; we don't want to re-download this file again
                 self.c.execute('INSERT INTO "%s" VALUES(NULL, ?, ?, ?, ?, ?)' % show['name'], attrs)
                 self.co.commit()
@@ -286,12 +313,15 @@ def main(argc, argv):
         print 'Your configuration file seems to sucks, here is the exception:'
         print str(e)
 
-    # OK, get ready to checkout!
-    shows_manager = TVShows_Manager(
-        conf_manager.get_series(),
-        conf_manager.get_log_file(),
-        conf_manager.get_magnet_file()
-    )
+    try:
+        # OK, get ready to checkout!
+        shows_manager = TVShows_Manager(
+            conf_manager.get_series(),
+            conf_manager.get_log_file(),
+            conf_manager.get_magnet_file()
+        )
+    except Exception, e:
+        print 'An important exception has been raised: ' + str(e)
 
     print '%d magnets added.' % shows_manager.checkout()
     return 1
