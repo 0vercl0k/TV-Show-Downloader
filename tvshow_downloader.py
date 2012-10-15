@@ -213,15 +213,13 @@ class TVShows_Manager:
 
         # we want to keep only the 2 last torrents of tv_show
         for entry in f.entries:
-            for name in tv_show_variants_name:
-                # we found a hit, lets keep it
-                if entry.title.lower().find(name) != -1:
-                    last_eps.append({
-                        'title' : entry.title,
-                        'url' : entry.link
-                    })
-                    i += 1
-                    break
+            # we found a hit, lets keep it
+            if any(entry.title.lower().find(name) != -1 for name in tv_show_variants_name):
+                last_eps.append({
+                    'title' : entry.title,
+                    'url' : entry.link
+                })
+                i += 1
 
             if i == 5:
                 break
