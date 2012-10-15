@@ -102,7 +102,18 @@ class Episode:
 
         self.info['is_hd'] = 1 if name.lower().find('720p') != -1 else 0
 
-        r = re.findall(name, '([0-9]{1,2})x([0-9]{1,2})')
+        regexes = [
+            '([0-9]{1,2})x([0-9]{1,2})', # eztv
+            '([0-9]{1,2})E([0-9]{1,2})'  # bt-chat
+        ]
+
+        for regex in regexes:
+            r = re.findall(name, regex)
+
+            # we found a perfect match
+            if r == 2:
+                break
+
         if len(r) == 0:
             self.info['season'] = 1337
             self.info['episode'] = 1337
@@ -183,6 +194,40 @@ class TVShows_Manager:
                 )''' % show['name'])
             self.co.commit()
 
+    def __parse_bt_chat(self, tv_show):
+        '''
+        Parse the bt-chat.com website until ezrss.it is updated
+        '''
+        tv_show_variants_name = [
+            tv_show,
+            tv_show.replace(' ', '.') # sometimes, it's entitled like that
+        ]
+
+        # EZTV - TV Show RSS feed
+        f = parse('http://rss.bt-chat.com/?group=3&cat=9')
+        # if f.bozo == 1: # BTW why the exception flag is called 'bozo' ? #wtf
+        #    raise f.bozo_exception
+
+        last_eps = []
+        i = 0
+
+        # we want to keep only the 2 last torrents of tv_show
+        for entry in f.entries:
+            for name in tv_show_variants_name:
+                # we found a hit, lets keep it
+                if entry.title.lower().find(name) != -1:
+                    last_eps.append({
+                        'title' : entry.title,
+                        'url' : entry.link
+                    })
+                    i += 1
+                    break
+
+            if i == 5:
+                break
+
+        return last_eps
+
     def __parse_eztv(self, tv_show):
         '''
         Parse the eztv website, and raise an exception if something goes wrong
@@ -201,11 +246,11 @@ class TVShows_Manager:
         # we want only the latest entry -- because I assume you launch the script at least one time each day
         return [f.entries[0], f.entries[1]]
 
-    def __is_episode_already_downloaded(self, tv_show, ep_name):
+    def __is_episode_already_downloaded(self, tv_show, ep):
         '''
         Check if an episode is already in the database
         '''
-        self.c.execute('SELECT count(*) FROM "%s" WHERE name = ?' % tv_show, (ep_name, ))
+        self.c.execute('SELECT count(*) FROM "%s" WHERE season = ? AND episode = ?' % tv_show, (ep.get_season(), ep.get_episode_number()))
         row = self.c.fetchone()
         if row[0] == 0:
             return False
@@ -216,17 +261,21 @@ class TVShows_Manager:
         Retrives the latest un-downloaded episode of a specific tv show
         '''
         try:
-            last_eps = self.__parse_eztv(tv_show)
-            
+            # last_eps = self.__parse_eztv(tv_show)
+            last_eps = self.__parse_bt_chat(tv_show.lower())
+
             # first, we test the older one
             last_eps.reverse()
 
             for episode in last_eps:
-                ep = Episode(episode.title)
-                
-                is_already_downloaded = self.__is_episode_already_downloaded(tv_show, episode.title)
+                # ep = Episode(episode.title)
+                ep = Episode(episode['title'])
 
-                if is_already_downloaded == False and ep.is_an_hd_episode() == hd:
+                is_already_downloaded = self.__is_episode_already_downloaded(tv_show, ep)
+
+                # hd = True means you *don't* want a non-hd release BUT
+                # hd = False, means 'take what you find'
+                if is_already_downloaded == False and (ep.is_an_hd_episode() == hd or hd == False):
                     return {
                         'feedparser' : episode ,
                         'episode' : ep
@@ -264,8 +313,10 @@ class TVShows_Manager:
                         raise Exception('The eztv website seems to be definitively down.')
 
             if last_ep != None:
-                magnet_uri = last_ep['feedparser'].magneturi
-                print 'It seems you haven\'t downloaded that one : ' + magnet_uri
+                # magnet_uri = last_ep['feedparser'].magneturi
+                magnet_uri = last_ep['feedparser']['url']
+
+                print 'It seems you haven\'t downloaded that one "%s": %s' % (last_ep['episode'].get_name(), magnet_uri)
 
                 self.logger.add_an_entry(last_ep['episode'].get_name())
                 file_magnets.write(magnet_uri + '\n')
