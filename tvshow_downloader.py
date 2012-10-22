@@ -103,23 +103,25 @@ class Episode:
         self.info['is_hd'] = 1 if name.lower().find('720p') != -1 else 0
 
         regexes = [
-            '([0-9]{1,2})x([0-9]{1,2})', # eztv
-            '([0-9]{1,2})E([0-9]{1,2})'  # bt-chat
+            'S([0-9]{1,2})x([0-9]{1,2})', # eztv
+            'S([0-9]{1,2})E([0-9]{1,2})'  # bt-chat
         ]
 
+        match_found = False
         for regex in regexes:
-            r = re.findall(name, regex)
+            r = re.search(regex, name)
 
             # we found a perfect match
-            if r == 2:
+            if r != None and len(r.groups()) == 2:
+                match_found = True
                 break
 
-        if len(r) == 0:
+        if match_found == False:
             self.info['season'] = 1337
             self.info['episode'] = 1337
         else:
-            self.info['season'] = r[0]
-            self.info['episode'] = r[1]
+            self.info['season'] = int(r.group(1), 10)
+            self.info['episode'] = int(r.group(2), 10)
     
     def get_name(self):
         return self.name
