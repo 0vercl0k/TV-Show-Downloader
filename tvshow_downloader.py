@@ -103,7 +103,7 @@ class Episode:
         self.info['is_hd'] = 1 if name.lower().find('720p') != -1 else 0
 
         regexes = [
-            'S([0-9]{1,2})x([0-9]{1,2})', # eztv
+            '([0-9]{1,2})x([0-9]{1,2})', # eztv
             'S([0-9]{1,2})E([0-9]{1,2})'  # bt-chat
         ]
 
